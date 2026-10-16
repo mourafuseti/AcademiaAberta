@@ -83,39 +83,37 @@ describe('Settings with password sign-in', () => {
     await settle()
     const account = section(page, 'Account')
     expect(titles(account)).toContain('Password')
-    expect(rowByTitle(account, 'Password').textContent).toContain('Not set. Handy for signing in where passkeys don’t work.')
+    expect(rowByTitle(account, 'Password').textContent).toContain('Not set. Lets you sign in with an e-mail instead of your name.')
 
-    mocks.config = null
+    mocks.config = { password_login: false }
     const off = mount(<Settings page="account" />)
     await settle()
     expect(titles(section(off, 'Account'))).not.toContain('Password')
   })
 
-  it('a guest in a browser without passkeys can create a profile and sign in with a password', () => {
+  it('a guest can create a profile and sign in with e-mail/password', () => {
     mocks.user = null
     mocks.sync = null
     mocks.webauthn = false
     const page = mount(<Settings page="account" />)
     const account = section(page, 'Account')
-    expect(titles(account)).toEqual(['Create new profile', 'Sign in with password'])
+    expect(titles(account)).toEqual(['Create new profile', 'Sign in with password', 'Use a code from your other device'])
     act(() => rowByTitle(account, 'Sign in with password').click())
     const sheet = mount(mocks.sheets.at(-1).render(() => {}))
     expect(sheet.querySelector('h3').textContent).toBe('Sign in with password')
 
-    mocks.config = null
+    mocks.config = { password_login: false }
     const off = mount(<Settings page="account" />)
-    expect(titles(section(off, 'Account'))).toEqual(['Passkeys not supported in this browser.'])
+    expect(titles(section(off, 'Account'))).toEqual(['Password sign-in is disabled on this server. Ask the administrator.'])
   })
 
-  // A guest who chose "Continue without account" in a browser that can make passkeys only had
-  // the passkey ways in here: no password profile, no code from another device.
-  it('a guest in a passkey browser can also create a password profile or use a code from another device', () => {
+  it('a guest can use the same e-mail/password choices in every browser and retain device pairing', () => {
     mocks.user = null
     mocks.sync = null
     const page = mount(<Settings page="account" />)
     const account = section(page, 'Account')
-    expect(titles(account)).toEqual(['Create passkey profile', 'Sign in with passkey', 'Create profile with a password', 'Sign in with password', 'Use a code from your other device'])
-    act(() => rowByTitle(account, 'Create profile with a password').click())
+    expect(titles(account)).toEqual(['Create new profile', 'Sign in with password', 'Use a code from your other device'])
+    act(() => rowByTitle(account, 'Create new profile').click())
     const sheet = mount(mocks.sheets.at(-1).render(() => {}))
     expect(sheet.querySelector('h3').textContent).toBe('Create your profile')
     expect(sheet.querySelector('input[name="new-password"]')).toBeTruthy()
@@ -123,12 +121,12 @@ describe('Settings with password sign-in', () => {
     const code = mount(mocks.sheets.at(-1).render(() => {}))
     expect(code.querySelector('h3').textContent).toBe('Add this device')
 
-    mocks.config = null
+    mocks.config = { password_login: false }
     const off = mount(<Settings page="account" />)
-    expect(titles(section(off, 'Account'))).toEqual(['Create passkey profile', 'Sign in with passkey', 'Use a code from your other device'])
+    expect(titles(section(off, 'Account'))).toEqual(['Password sign-in is disabled on this server. Ask the administrator.'])
   })
 
-  it('"Sign in" after the server ended the session asks which way; the passkey is one tap on it', async () => {
+  it('"Sign in" after the server ended the session opens e-mail/password sign-in', async () => {
     mocks.sync = { status: 'auth', offline: false, pending: true, auth: true, lastError: { status: 401 }, lastSynced: 0, server: null }
     const page = mount(<Settings page="account" />)
     const row = rowByTitle(section(page, 'Server & sync'), 'Sign in')
@@ -136,8 +134,8 @@ describe('Settings with password sign-in', () => {
     act(() => row.click())
     expect(mocks.passkeyLogin).not.toHaveBeenCalled()
     const sheet = mount(mocks.sheets.at(-1).render(() => {}))
-    const passkey = [...sheet.querySelectorAll('button')].find(b => b.textContent === 'Sign in with passkey')
-    await act(async () => { passkey.click() })
-    expect(mocks.passkeyLogin).toHaveBeenCalledTimes(1)
+    expect(sheet.querySelector('input[type="email"]')).toBeTruthy()
+    expect([...sheet.querySelectorAll('button')].some(b => b.textContent === 'Sign in with passkey')).toBe(false)
+    expect(mocks.passkeyLogin).not.toHaveBeenCalled()
   })
 })

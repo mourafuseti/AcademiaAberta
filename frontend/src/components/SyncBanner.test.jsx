@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
   state.passkeyLogin = vi.fn(async () => ({ id: 'u1', name: 'andi' }))
   state.update = vi.fn(mut => { state.S = { ...state.S }; mut(state.S) })
   state.snapshot = () => ({
-    S: state.S, user: state.user, sync: state.sync, needsMobileOnboarding: state.onboarding,
+    S: state.S, user: state.user, sync: state.sync, config: { password_login: true }, needsMobileOnboarding: state.onboarding,
     isGuest: () => state.guest, syncNow: state.syncNow, update: state.update,
     setUser: vi.fn(), adoptProfile: vi.fn(async () => ({})),
   })
@@ -190,13 +190,18 @@ describe('not connected — it says so, and what to do', () => {
     expect(openedConnect().dataset.url).toBe('')
   })
 
-  it('browser refused mid-session: "Sign in" is the passkey, right there', async () => {
+  it('browser refused mid-session: "Sign in" opens the password sheet', async () => {
     mocks.sync = sync('auth', { auth: true, pending: true, lastError: { status: 401, code: 'auth' } })
     render()
     expect(text()).toBe('Your server no longer accepts this browser. Your changes are kept here.')
     expect(label()).toBe('Sign in')
-    await act(async () => { button().click() })
-    expect(mocks.passkeyLogin).toHaveBeenCalledTimes(1)
+    act(() => { button().click() })
+    expect(mocks.passkeyLogin).not.toHaveBeenCalled()
+    const sheet = document.createElement('div')
+    const sheetRoot = createRoot(sheet)
+    act(() => sheetRoot.render(mocks.sheets.at(-1).render(() => {})))
+    expect(sheet.querySelector('input[type="email"]')).toBeTruthy()
+    act(() => sheetRoot.unmount())
   })
 
   it('on the sign-in screen after the server ended the session, it says the changes are still here', () => {
@@ -242,14 +247,16 @@ describe('no server at all', () => {
     expect(mocks.passkeyLogin).not.toHaveBeenCalled()
   })
 
-  it('a browser without passkeys still hears it, with nothing to press', () => {
+  it('a browser without passkeys can go to Account for e-mail/password sign-in', () => {
     mocks.user = null
     mocks.guest = true
     mocks.webauthn = false
     mocks.sync = sync('local')
     render()
     expect(text()).toBe('Guest mode: your data lives only in this browser.')
-    expect(button()).toBeNull()
+    act(() => button().click())
+    expect(mocks.navs).toEqual(['/settings/account'])
+    expect(mocks.passkeyLogin).not.toHaveBeenCalled()
   })
 
   it('the sign-in screen of a browser nobody signed in on is left alone', () => {

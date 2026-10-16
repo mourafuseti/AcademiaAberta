@@ -5,6 +5,8 @@ import { useUI } from '../store/useUI.js'
 import { api } from '../lib/api.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
+import { useLang } from '../lib/i18n.js'
+import { adminText as at } from '../lib/admin-copy.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -12,44 +14,38 @@ import { Button } from '../components/ui.jsx'
 import AdminCoach from './AdminCoach.jsx'
 import '../admin.css'
 
-// Admin-only operator dashboard (owner passkey + admin flag; guarded again server-side).
-// Deliberately English-only — it isn't part of the translated end-user surface, so it stays
-// out of the per-language string packs.
-//
-// One page of cards, each opening with a sentence that says what it is for. An operator who
-// looks at this twice a year should not have to remember what "synced 3d ago" or an invite
-// code means.
-
 const rel = ts => {
-  if (!ts) return 'never'
+  if (!ts) return at('never')
   const s = Math.max(0, (Date.now() - ts) / 1000)
-  if (s < 60) return 'just now'
-  if (s < 3600) return Math.floor(s / 60) + ' min ago'
-  if (s < 86400) return Math.floor(s / 3600) + ' h ago'
-  return Math.floor(s / 86400) + ' d ago'
+  if (s < 60) return at('just now')
+  if (s < 3600) return at('{0} min ago', Math.floor(s / 60))
+  if (s < 86400) return at('{0} h ago', Math.floor(s / 3600))
+  return at('{0} d ago', Math.floor(s / 86400))
 }
-const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min' }
+const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + ' ' + at('min') : Math.floor(m / 60) + ' ' + at('h') + ' ' + (m % 60) + ' ' + at('min') }
 
 // The one time the reset code is visible. Locked, so a tap beside the sheet cannot lose it
 // before it has been copied or written down.
 function ResetCodeSheet({ name, email, code, expires, close }) {
+  useLang()
   const toast = useUI(s => s.toast)
-  const copy = () => { navigator.clipboard?.writeText(code).catch(() => {}); toast('Copied') }
+  const copy = () => { navigator.clipboard?.writeText(code).catch(() => {}); toast(at('Copied')) }
   return <>
-    <h3>Reset code for {name}</h3>
-    <div className="adm-lead">Give them this code. They choose “Sign in with password” → “Have a reset code from your admin?”, enter their name <b>{name}</b>{email && <> (or their sign-in e-mail <b>{email}</b>)</>}, the code and a new password. It works once, until {new Date(expires).toLocaleString()}, and will not be shown again.</div>
-    <button className="adm-code" style={{ fontSize: 22, width: '100%', padding: '14px 0' }} onClick={copy} aria-label="copy code">{code}</button>
+    <h3>{at('Reset code for {0}', name)}</h3>
+    <div className="adm-lead">{at('Give them this code. They choose “Sign in with password” → “Have a reset code from your admin?”, enter their name')} <b>{name}</b>{email && <> {at('(or their sign-in e-mail')} <b>{email}</b>)</>}{at(', the code and a new password. It works once, until')} {new Date(expires).toLocaleString()}{at(', and will not be shown again.')}</div>
+    <button className="adm-code" style={{ fontSize: 22, width: '100%', padding: '14px 0' }} onClick={copy} aria-label={at('copy code')}>{code}</button>
     <div style={{ height: 12 }} />
-    <Button variant="primary" onClick={close}>Done</Button>
+    <Button variant="primary" onClick={close}>{at('Done')}</Button>
   </>
 }
 
 function UserDetail({ id, onChanged, close }) {
+  useLang()
   const [d, setD] = useState(null)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
-  if (!d) return <div className="muted small">Loading…</div>
+  if (!d) return <div className="muted small">{at('Loading…')}</div>
   const u = d.user
   // The document comes straight off the user's state file. PUT /api/data drops null and
   // shapeless entries now, but a file written before it did still answers with them, and this
@@ -68,21 +64,21 @@ function UserDetail({ id, onChanged, close }) {
   }
   const doDelete = () => {
     api('/api/admin/user/delete', { method: 'POST', body: JSON.stringify({ id: u.id }) })
-      .then(() => { toast('Account deleted'); onChanged(); close() })
+      .then(() => { toast(at('Account deleted')); onChanged(); close() })
       .catch(e => toast(e.message))
   }
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
-      .then(() => { toast(disabled ? 'User disabled' : 'User enabled'); onChanged(); close() })
+      .then(() => { toast(at(disabled ? 'User disabled' : 'User enabled')); onChanged(); close() })
       .catch(e => toast(e.message))
   }
   // Password sign-in (#118): the server only sends `password` when the instance offers it. The
   // code comes back once, is shown once, and is never stored anywhere but as a hash.
   const pwInstance = typeof u.password === 'boolean'
   const resetPassword = () => confirmSheet({
-    title: 'Reset ' + u.name + '’s password?',
-    message: 'You get a one-time code to hand them. Their current password stops working now and they are signed out everywhere; their passkeys keep working. They set a new password with the code under “Sign in with password”. It is shown once and is valid for 24 hours.',
-    confirmText: 'Create reset code',
+    title: at('Reset {0}’s password?', u.name),
+    message: at('You get a one-time code to hand them. Their current password stops working now and they are signed out everywhere; their passkeys keep working. They set a new password with the code under “Sign in with password”. It is shown once and is valid for 24 hours.'),
+    confirmText: at('Create reset code'),
     danger: true,
     onConfirm: () => api('/api/admin/user/password-reset', { method: 'POST', body: JSON.stringify({ id: u.id }) })
       .then(r => { onChanged(); close(); openSheet(done => <ResetCodeSheet name={r.name} email={u.email} code={r.code} expires={r.expires} close={done} />, { locked: true }) })
@@ -91,21 +87,21 @@ function UserDetail({ id, onChanged, close }) {
   return <>
     <h3 className="capitalize">{u.name}</h3>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
-      {u.admin && <span className="adm-pill acc">admin</span>}
-      {u.disabled && <span className="adm-pill bad">disabled</span>}
-      {u.invitedBy && <span className="adm-pill">invite {u.invitedBy}</span>}
-      {u.password && <span className="adm-pill">password</span>}
+      {u.admin && <span className="adm-pill acc">{at('admin')}</span>}
+      {u.disabled && <span className="adm-pill bad">{at('disabled')}</span>}
+      {u.invitedBy && <span className="adm-pill">{at('invite')} {u.invitedBy}</span>}
+      {u.password && <span className="adm-pill">{at('password')}</span>}
       {/* The sign-in e-mail (password instances only): shown to admins and nobody else. */}
-      {u.email && <span className="adm-pill" title="sign-in e-mail">{u.email}</span>}
-      {u.resetUntil && <span className="adm-pill acc">reset code until {new Date(u.resetUntil).toLocaleString()}</span>}
-      <span className="adm-pill">joined {u.created ? fmtDate(u.created.slice(0, 10)) : '–'}</span>
+      {u.email && <span className="adm-pill" title={at('sign-in e-mail')}>{u.email}</span>}
+      {u.resetUntil && <span className="adm-pill acc">{at('reset code until')} {new Date(u.resetUntil).toLocaleString()}</span>}
+      <span className="adm-pill">{at('joined')} {u.created ? fmtDate(u.created.slice(0, 10)) : '–'}</span>
     </div>
     <div className="tiles" style={{ textAlign: 'start' }}>
-      <div className="tile"><div className="l">Workouts</div><div className="v" style={{ fontSize: '1.1rem' }}>{workouts.length}</div></div>
-      <div className="tile"><div className="l">Weigh-ins</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
-      <div className="tile"><div className="l">Measurements</div><div className="v" style={{ fontSize: '1.1rem' }}>{(d.measurements || []).length}</div></div>
-      <div className="tile"><div className="l">Routines</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
-      <div className="tile"><div className="l">Last sync</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
+      <div className="tile"><div className="l">{at('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{workouts.length}</div></div>
+      <div className="tile"><div className="l">{at('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
+      <div className="tile"><div className="l">{at('Measurements')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{(d.measurements || []).length}</div></div>
+      <div className="tile"><div className="l">{at('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
+      <div className="tile"><div className="l">{at('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
     </div>
     {!u.admin && <>
       <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '12px 0 4px' }}
@@ -151,44 +147,45 @@ function UserDetail({ id, onChanged, close }) {
 }
 
 function InvitesCard({ invites, reload, inviteOnly }) {
+  useLang()
   const toast = useUI(s => s.toast)
   const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
-    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('Code ' + invite.code + ' created & copied'); reload() })
+    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast(at('Code {0} created & copied', invite.code)); reload() })
     .catch(e => toast(e.message))
   const revoke = code => confirmSheet({
-    title: 'Revoke code ' + code + '?', message: 'Anyone who has it can no longer use it. People who already signed up with it are not affected.',
-    confirmText: 'Revoke', danger: true,
+    title: at('Revoke code {0}?', code), message: at('Anyone who has it can no longer use it. People who already signed up with it are not affected.'),
+    confirmText: at('Revoke'), danger: true,
     onConfirm: () => api('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ code }) })
-      .then(() => { toast('Code revoked'); reload() }).catch(e => toast(e.message))
+        .then(() => { toast(at('Code revoked')); reload() }).catch(e => toast(e.message))
   })
-  const copy = code => { navigator.clipboard?.writeText(code).catch(() => {}); toast('Copied ' + code) }
+      const copy = code => { navigator.clipboard?.writeText(code).catch(() => {}); toast(at('Copied {0}', code)) }
   const open = (invites || []).filter(i => !i.usedBy)
   const used = (invites || []).filter(i => i.usedBy)
   return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Invite codes</h2>
-      <Button variant="primary" size="sm" onClick={gen} icon="plus">New code</Button></div>
+    <div className="row between"><h2 style={{ margin: 0 }}>{at('Invite codes')}</h2>
+      <Button variant="primary" size="sm" onClick={gen} icon="plus">{at('New code')}</Button></div>
     <div className="adm-lead">
       {inviteOnly
-        ? 'Sign-up is invite-only: someone needs one of these codes to create a profile. Each code works once.'
-        : 'Sign-up is open, so codes are optional here. They only record who invited whom.'}
+        ? at('Sign-up is invite-only: someone needs one of these codes to create a profile. Each code works once.')
+        : at('Sign-up is open, so codes are optional here. They only record who invited whom.')}
     </div>
     {open.length ? <>
-      <div className="adm-group-t">Unused · tap to copy</div>
+      <div className="adm-group-t">{at('Unused · tap to copy')}</div>
       {open.map(i => <div key={i.code} className="row between" style={{ padding: '6px 0', borderBottom: 'var(--hair) solid var(--sep)' }}>
-        <button className="adm-code" onClick={() => copy(i.code)} aria-label={'copy ' + i.code}>{i.code}</button>
+        <button className="adm-code" onClick={() => copy(i.code)} aria-label={at('copy') + ' ' + i.code}>{i.code}</button>
         <div className="row" style={{ gap: 4 }}>
-          <button className="iconbtn adm-iconbtn" onClick={() => copy(i.code)} aria-label="copy"><Icon name="copy" /></button>
-          <button className="iconbtn adm-iconbtn" style={{ color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label="revoke"><Icon name="trash" /></button>
+          <button className="iconbtn adm-iconbtn" onClick={() => copy(i.code)} aria-label={at('copy')}><Icon name="copy" /></button>
+          <button className="iconbtn adm-iconbtn" style={{ color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label={at('revoke')}><Icon name="trash" /></button>
         </div>
       </div>)}
     </> : null}
     {used.length ? <>
-      <div className="adm-group-t" style={{ marginTop: open.length ? 12 : 0 }}>Already used</div>
+      <div className="adm-group-t" style={{ marginTop: open.length ? 12 : 0 }}>{at('Already used')}</div>
       {used.map(i => <div key={i.code} className="row between dim" style={{ padding: '6px 0', fontSize: '.82rem' }}>
-        <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', letterSpacing: '.06em' }}>{i.code}</span><span>→ {i.usedByName || 'used'}</span>
+        <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', letterSpacing: '.06em' }}>{i.code}</span><span>→ {i.usedByName || at('used')}</span>
       </div>)}
     </> : null}
-    {!open.length && !used.length && <div className="adm-empty">No codes yet. "New code" makes one and copies it to your clipboard.</div>}
+    {!open.length && !used.length && <div className="adm-empty">{at('No codes yet. "New code" makes one and copies it to your clipboard.')}</div>}
   </div>
 }
 
@@ -196,6 +193,7 @@ function InvitesCard({ invites, reload, inviteOnly }) {
 // the dashboard is deliberately one page of cards, and the 95 % use of this is a glance at the
 // last twenty events. Paging follows Library.jsx's house style — "Show more", not page numbers.
 function AuditCard({ tick }) {
+  useLang()
   const toast = useUI(s => s.toast)
   const [meta, setMeta] = useState(null)      // last response minus the rows: total, retention, …
   const [rows, setRows] = useState([])
@@ -210,27 +208,27 @@ function AuditCard({ tick }) {
   useEffect(() => { load(cat) }, [tick])
 
   const clear = () => confirmSheet({
-    title: 'Clear the activity log?',
-    message: 'Every recorded event is deleted. The clear itself is logged, so the gap stays visible.',
-    confirmText: 'Clear', danger: true,
+    title: at('Clear the activity log?'),
+    message: at('Every recorded event is deleted. The clear itself is logged, so the gap stays visible.'),
+    confirmText: at('Clear'), danger: true,
     onConfirm: () => api('/api/admin/audit/clear', { method: 'POST', body: '{}' })
-      .then(() => { toast('Activity log cleared'); pick(cat) }).catch(e => toast(e.message))
+      .then(() => { toast(at('Activity log cleared')); pick(cat) }).catch(e => toast(e.message))
   })
 
   if (meta && !meta.enabled) return null      // AUDIT_LOG=0 — the card isn't there at all
 
   return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Activity log</h2>
-      <button className="iconbtn adm-iconbtn" style={{ color: 'var(--red)' }} onClick={clear} aria-label="clear log"><Icon name="trash" /></button></div>
+    <div className="row between"><h2 style={{ margin: 0 }}>{at('Activity log')}</h2>
+      <button className="iconbtn adm-iconbtn" style={{ color: 'var(--red)' }} onClick={clear} aria-label={at('clear log')}><Icon name="trash" /></button></div>
     <div className="adm-lead">
-      Who signed in, what failed, and what an admin changed.
-      {meta ? ' ' + fmtNum(meta.total) + ' events'
-        + (meta.retention.days ? ', kept for ' + meta.retention.days + ' days' : '')
-        + (meta.ip_mode === 'off' ? ', without IP addresses' : '') + '.' : ''}
+      {at('Who signed in, what failed, and what an admin changed.')}
+      {meta ? ' ' + at('{0} events', fmtNum(meta.total))
+        + (meta.retention.days ? at(', kept for {0} days', meta.retention.days) : '')
+        + (meta.ip_mode === 'off' ? at(', without IP addresses') : '') + '.' : ''}
     </div>
     <div className="chips" style={{ marginBottom: 10 }}>
       {[['', 'All'], ['auth', 'Sign-ins'], ['admin', 'Admin'], ['fail', 'Failed']].map(([v, l]) =>
-        <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{l}</button>)}
+        <button key={v} className={'chip' + (cat === v ? ' on' : '')} onClick={() => pick(v)}>{at(l)}</button>)}
     </div>
     {rows.map(e => {
       const line = auditLine(e)
@@ -238,20 +236,21 @@ function AuditCard({ tick }) {
         <div className="grow">
           <div className="small" style={{ fontWeight: 600 }}>{line.title}
             {/* a red pill, not a red row: twenty fumbled Face IDs in a row shouldn't read as an incident */}
-            {!e.ok && <span className="adm-pill bad" style={{ marginInlineStart: 6 }}>failed</span>}
-            {auditCat(e.ev) === 'admin' && <span className="adm-pill acc" style={{ marginInlineStart: 6 }}>admin</span>}</div>
+            {!e.ok && <span className="adm-pill bad" style={{ marginInlineStart: 6 }}>{at('failed')}</span>}
+            {auditCat(e.ev) === 'admin' && <span className="adm-pill acc" style={{ marginInlineStart: 6 }}>{at('admin')}</span>}</div>
           {line.sub && <div className="dim" style={{ fontSize: '.72rem' }}>{line.sub}</div>}
         </div>
         <span className="small muted" style={{ flex: 'none', marginInlineStart: 8 }}>{fmtWhen(e.ts, meta?.now)}</span>
       </div>
     })}
-    {meta && !rows.length && <div className="adm-empty">Nothing logged yet.</div>}
+    {meta && !rows.length && <div className="adm-empty">{at('Nothing logged yet.')}</div>}
     {meta?.nextBefore && <div style={{ marginTop: 10 }}>
-      <Button size="sm" onClick={() => load(cat, meta.nextBefore)}>Show more</Button></div>}
+      <Button size="sm" onClick={() => load(cat, meta.nextBefore)}>{at('Show more')}</Button></div>}
   </div>
 }
 
 export default function Admin() {
+  useLang()
   const nav = useNavigate()
   const user = useStore(s => s.user)
   const openSheet = useUI(s => s.openSheet)
@@ -267,10 +266,10 @@ export default function Admin() {
   // trying; a list that did load stays up, marked as the last one that came through.
   const loadUsers = () => api('/api/admin/users')
     .then(d => {
-      if (!Array.isArray(d?.users)) throw new Error('The server answered without a list of users.')
+      if (!Array.isArray(d?.users)) throw new Error(at('The server answered without a list of users.'))
       setUsers(d.users); setInviteOnly(!!d.invite_only); setUsersErr(null)
     })
-    .catch(e => setUsersErr(e.message || 'Failed to load'))
+    .catch(e => setUsersErr(e.message || at('Failed to load')))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   // poll every 15s so the "training now" section stays live without a manual refresh
   useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
@@ -283,36 +282,36 @@ export default function Admin() {
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/settings/account')} aria-label="Back"><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginInlineStart: 8 }}><h1 style={{ margin: 0 }}>Admin</h1>
-        <div className="sub">{users ? users.length + ' users · ' + activeCount + ' active this week' : usersErr ? 'Could not load' : 'Loading…'}</div></div>
-      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); setTick(n => n + 1) }} aria-label="refresh">↻</button>
+      <button className="iconbtn" onClick={() => nav('/settings/account')} aria-label={at('Back')}><Icon name="chevronLeft" /></button>
+      <div style={{ flex: 1, marginInlineStart: 8 }}><h1 style={{ margin: 0 }}>{at('Admin dashboard')}</h1>
+        <div className="sub">{users ? at('{0} users · {1} active this week', users.length, activeCount) : usersErr ? at('Could not load') : at('Loading…')}</div></div>
+      <button className="iconbtn" onClick={() => { loadUsers(); loadInvites(); setTick(n => n + 1) }} aria-label={at('refresh')}>↻</button>
     </div>
     <div className="adm-intro">
-      Everything about running this instance: who uses it, how they get in, the AI Coach, and what has happened on it. Nothing here shows anyone's training data beyond counts.
+      {at('Everything about running this instance: who uses it, how they get in, the AI Coach, and what has happened on it. Nothing here shows anyone\'s training data beyond counts.')}
     </div>
 
     {usersErr && <div className="card" role="alert" style={{ borderColor: 'var(--red)' }}>
-      <div className="row between"><h2 style={{ margin: 0 }}>{users ? 'The last update failed' : 'Could not load the users'}</h2>
-        <Button size="sm" icon="reset" onClick={loadUsers}>Try again</Button></div>
+      <div className="row between"><h2 style={{ margin: 0 }}>{users ? at('The last update failed') : at('Could not load the users')}</h2>
+        <Button size="sm" icon="reset" onClick={loadUsers}>{at('Try again')}</Button></div>
       <div className="adm-lead" style={{ marginBottom: 0 }}>
-        {usersErr} {users ? 'The list below is the last one that loaded.' : 'It tries again every 15 seconds.'}
+        {usersErr} {users ? at('The list below is the last one that loaded.') : at('It tries again every 15 seconds.')}
       </div>
     </div>}
 
     <div className="tiles" style={{ marginBottom: 12 }}>
-      <div className="tile"><div className="l">Users</div><div className="v">{users ? users.length : '–'}</div></div>
-      <div className="tile"><div className="l">Training now</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '–'}</div></div>
-      <div className="tile"><div className="l">Active 7 days</div><div className="v">{users ? activeCount : '–'}</div></div>
-      <div className="tile"><div className="l">Disabled</div><div className="v">{users ? disabledCount : '–'}</div></div>
+      <div className="tile"><div className="l">{at('Users')}</div><div className="v">{users ? users.length : '–'}</div></div>
+      <div className="tile"><div className="l">{at('Training now')}</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '–'}</div></div>
+      <div className="tile"><div className="l">{at('Active 7 days')}</div><div className="v">{users ? activeCount : '–'}</div></div>
+      <div className="tile"><div className="l">{at('Disabled')}</div><div className="v">{users ? disabledCount : '–'}</div></div>
     </div>
 
     {liveUsers.length > 0 && <div className="card" style={{ borderColor: 'var(--acc)' }}>
-      <h2 className="row" style={{ margin: '0 0 2px', gap: 6 }}><Icon name="dot" style={{ fontSize: 10, color: 'var(--green)' }} />Training now</h2>
-      <div className="adm-lead">Sessions running at this moment. Tap a name for details.</div>
+      <h2 className="row" style={{ margin: '0 0 2px', gap: 6 }}><Icon name="dot" style={{ fontSize: 10, color: 'var(--green)' }} />{at('Training now')}</h2>
+      <div className="adm-lead">{at('Sessions running at this moment. Tap a name for details.')}</div>
       {liveUsers.map(u => <div key={u.id} className="row between" style={{ padding: '8px 2px', borderBottom: 'var(--hair) solid var(--sep)' }} onClick={() => openUser(u.id)}>
         <div><div className="small" style={{ fontWeight: 600 }}>{u.name}</div>
-          <div className="dim" style={{ fontSize: '.72rem' }}>{u.live.name} · exercise {u.live.exIdx} of {u.live.exTotal} · {u.live.setsDone}/{u.live.setsTotal} sets</div></div>
+          <div className="dim" style={{ fontSize: '.72rem' }}>{at('{0} · exercise {1} of {2} · {3}/{4} sets', u.live.name, u.live.exIdx, u.live.exTotal, u.live.setsDone, u.live.setsTotal)}</div></div>
         <span className="adm-pill acc">{dur(Date.now() - u.live.startedAt)}</span>
       </div>)}
     </div>}
@@ -324,16 +323,16 @@ export default function Admin() {
     <InvitesCard invites={invites} reload={loadInvites} inviteOnly={inviteOnly} />
 
     <div className="card">
-      <h2 style={{ margin: 0 }}>Users</h2>
-      <div className="adm-lead">Everyone with a profile on this instance. Tap one to see their activity, to disable the account (nothing is deleted) or to delete it with all their data for good.</div>
+      <h2 style={{ margin: 0 }}>{at('Users')}</h2>
+      <div className="adm-lead">{at('Everyone with a profile on this instance. Tap one to see their activity, to disable the account (nothing is deleted) or to delete it with all their data for good.')}</div>
       <div className="list">
         {(users || []).map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-          <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>admin</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>disabled</span>}</div>
-            <div className="ss">{u.live ? 'training now · ' + u.live.name : u.workouts + ' workouts' + (u.lastWorkout ? ' · last ' + fmtDate(u.lastWorkout) : '') + ' · last sync ' + rel(u.lastSync)}</div>
-            {u.email && <div className="ss" title="sign-in e-mail">{u.email}</div>}</div>
-          {u.hasPush && <Icon name="bell" title="push notifications on" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
+          <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>{at('admin')}</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>{at('disabled')}</span>}</div>
+            <div className="ss">{u.live ? at('training now · {0}', u.live.name) : at('{0} workouts', u.workouts) + (u.lastWorkout ? at(' · last {0}', fmtDate(u.lastWorkout)) : '') + at(' · last sync {0}', rel(u.lastSync))}</div>
+            {u.email && <div className="ss" title={at('sign-in e-mail')}>{u.email}</div>}</div>
+          {u.hasPush && <Icon name="bell" title={at('push notifications on')} style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
         </div>)}
-        {users && !users.length && <div className="adm-empty">No users yet.</div>}
+        {users && !users.length && <div className="adm-empty">{at('No users yet.')}</div>}
       </div>
     </div>
 

@@ -6,9 +6,7 @@ import Login from './Login.jsx'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-/* The sign-in screen's way in for a device whose person already has a profile elsewhere (#95):
-   a code from the signed-in device gives this one a passkey of its own, instead of "Create new
-   profile" making a second, empty one. Only where this browser can make a passkey. */
+/* A code from an already signed-in device pairs this browser without creating another profile. */
 const mocks = vi.hoisted(() => {
   const state = { webauthn: true, config: null, sheets: [] }
   state.snapshot = () => ({
@@ -53,8 +51,8 @@ beforeEach(() => { mocks.webauthn = true; mocks.config = null; mocks.sheets.leng
 afterEach(() => { act(() => { mounted.splice(0).forEach(({ root, host }) => { root.unmount(); host.remove() }) }) })
 
 describe('Login: a code from another device', () => {
-  it('sits under the ways in where passkeys work, and opens the sheet that redeems a code', () => {
-    mocks.config = { allow_guest: true }
+  it('sits below e-mail/password sign-in and opens the sheet that redeems a pairing code', () => {
+    mocks.config = { allow_guest: true, password_login: true }
     const page = mount(<Login />)
     const all = buttons(page)
     expect(all.indexOf('Use a code from your other device')).toBe(all.indexOf('Create new profile') + 1)

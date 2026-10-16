@@ -74,7 +74,7 @@ async function startServer(t, { env = {}, users = [], creds = [], invites = [] }
     cwd: API, stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, PORT: '0', DATA_DIR: dataDir, ORIGIN, RP_ID: 'localhost',
-      PASSWORD_LOGIN: '1', TRUST_PROXY: '1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
+      TRUST_PROXY: '1', INVITE_ONLY: '', ADMIN_UIDS: '', AUDIT_LOG: '1', ...env
     }
   });
   const h = { api: '', log: '', dataDir };
@@ -102,7 +102,7 @@ const user = (id, name, extra = {}) => ({ id, name, created: new Date().toISOStr
 const withPassword = (id, name, extra = {}) => user(id, name, { pw: { h: pwHash, set: new Date().toISOString() }, ...extra });
 const login = (h, name, password, ip) => h.req('POST', '/api/login/password', { body: { name, password }, ip });
 
-test('with PASSWORD_LOGIN off every password route is a 404 and /api/config says nothing', async t => {
+test('with PASSWORD_LOGIN off every password route is a 404 and /api/config reports it disabled', async t => {
   const h = await startServer(t, { env: { PASSWORD_LOGIN: '' }, users: [user('u1', 'Ana')] });
   const cookie = `gymsid=${mintSession('u1')}`;
   for (const [m, p] of [
@@ -114,7 +114,7 @@ test('with PASSWORD_LOGIN off every password route is a 404 and /api/config says
     assert.equal(r.status, 404, `${m} ${p}`);
   }
   const cfg = await h.req('GET', '/api/config');
-  assert.equal('password_login' in cfg.body, false);
+  assert.equal(cfg.body.password_login, false);
 });
 
 test('signs in with the right password, case-insensitively by profile name, like a passkey does', async t => {
@@ -293,13 +293,16 @@ test('registration with a password: policy, unique names among password holders,
     users: [withPassword('u1', 'Ana'), user('u2', 'Bea')],
     invites: [{ code: 'INVITE1', created: new Date().toISOString() }]
   });
-  const reg = (body, ip = '198.51.100.80') => h.req('POST', '/api/register/password', { body, ip });
+  const reg = (body, ip = '198.51.100.80') => h.req('POST', '/api/register/password', {
+    body: { email: `${body.name.toLowerCase()}@example.com`, ...body }, ip
+  });
   assert.deepEqual((await reg({ name: 'Cleo', password: GOOD })).body.code, 'invite');
   assert.equal((await reg({ name: 'Cleo', password: GOOD, code: 'WRONG' })).status, 403);
   assert.equal((await reg({ name: 'Cleo', password: 'short', code: 'invite1' })).body.code, 'too-short');
   assert.equal((await reg({ name: 'Cleo', password: 'Password123!', code: 'invite1' })).body.code, 'too-common');
   assert.equal((await reg({ name: 'Cleo', password: 'cleo.2024.2024', code: 'invite1' })).body.code, 'too-common');
   assert.equal((await reg({ name: 'ANA', password: GOOD, code: 'invite1' })).status, 409);
+  assert.equal((await h.req('POST', '/api/register/password', { body: { name: 'Dora', password: GOOD, code: 'invite1' }, ip: '198.51.100.79' })).body.code, 'email-required');
   const r = await reg({ name: 'Cleo', password: GOOD, code: 'invite1' });
   assert.equal(r.status, 200);
   assert.ok(r.cookie);
@@ -312,7 +315,7 @@ test('registration with a password: policy, unique names among password holders,
   assert.equal((await reg({ name: 'Dora', password: GOOD, code: 'INVITE1' }, '198.51.100.81')).status, 403);
   // A name that only a passkey profile has is free to take; the two never meet at sign-in.
   const h2 = await startServer(t, { users: [user('u2', 'Bea')] });
-  assert.equal((await h2.req('POST', '/api/register/password', { body: { name: 'bea', password: GOOD }, ip: '198.51.100.82' })).status, 200);
+  assert.equal((await h2.req('POST', '/api/register/password', { body: { name: 'bea', email: 'bea@example.com', password: GOOD }, ip: '198.51.100.82' })).status, 200);
 });
 
 test('setting a first password needs a passkey made for it, not just a session', async t => {
@@ -583,7 +586,7 @@ test('a pending reset keeps the name: nobody can take it until the code is used 
   assert.equal(h.db().users.filter(u => u.pw && u.name.trim().toLowerCase() === 'ana').length, 1);
 
   // An expired code holds nothing: that name is free.
-  assert.equal((await h.req('POST', '/api/register/password', { body: { name: 'cleo', password: GOOD }, ip })).status, 200);
+  assert.equal((await h.req('POST', '/api/register/password', { body: { name: 'cleo', email: 'cleo@example.com', password: GOOD }, ip })).status, 200);
 });
 
 test('registering a name while its reset code is redeemed leaves one password holder, the reset profile', async t => {

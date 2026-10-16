@@ -405,21 +405,15 @@ export async function createPasskey(options) {
   return credToJSON(cred)
 }
 
-// Name-and-password sign-in, on an instance that offers it (config.password_login). Each of
-// these answers with the same session cookie a passkey sign-in sets, so callers treat the user
-// they return exactly alike.
+// E-mail-and-password sign-in. Each route sets the same session cookie as passkey sign-in, so
+// callers treat the returned user exactly alike.
 const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body) })
-// `name` is whatever was typed in "Name or e-mail": it goes in the original `name` field, which
-// the server matches against the profile's sign-in e-mail when it holds an "@" and against the
-// name otherwise — so the app and a server a version apart still understand each other.
-export async function passwordLogin(name, password) {
-  return (await post('/api/login/password', { name, password })).user
+export async function passwordLogin(email, password) {
+  return (await post('/api/login/password', { email, password })).user
 }
-// `email` is optional, and sent only when there is one: a server from before the field would
-// otherwise ignore it without a word, which is the same thing.
 export async function passwordRegister(name, password, code, email) {
-  return (await post('/api/register/password', { name, password, code: code || '', ...(email ? { email } : {}) })).user
+  return (await post('/api/register/password', { name, password, code: code || '', email })).user
 }
-export async function passwordResetRedeem(name, code, next) {
-  return (await post('/api/login/password-reset', { name, code, next })).user
+export async function passwordResetRedeem(email, code, next) {
+  return (await post('/api/login/password-reset', { email, code, next })).user
 }

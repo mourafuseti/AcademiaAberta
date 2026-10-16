@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
   state.signOutAll = vi.fn()
   state.shareExport = vi.fn(async () => {})
   state.snapshot = () => ({
-    S: state.S, user: state.user, sync: state.sync, coachLocal: null,
+    S: state.S, user: state.user, sync: state.sync, config: { password_login: true }, coachLocal: null,
     update: vi.fn(), replaceState: vi.fn(), setUser: vi.fn(), pullState: vi.fn(), pushState: vi.fn(), resetDemo: vi.fn(),
     syncNow: state.syncNow, unsyncedChanges: () => state.unsynced, keptChanges: async () => state.kept,
     disconnectServer: state.disconnectServer, signOut: state.signOut, signOutAll: state.signOutAll,
@@ -257,7 +257,7 @@ describe('leaving the server', () => {
     const sheet = openSheet()
     expect(sheet.textContent).toContain('Sign in again, or export a backup first.')
     expect(sheet.textContent).not.toContain('Try again')
-    expect(buttonByText(sheet, 'Sign in with passkey')).toBeTruthy()
+    expect(buttonByText(sheet, 'Sign in')).toBeTruthy()
   })
 
   it('a server that is only out of reach still offers Try again, and says so', async () => {

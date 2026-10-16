@@ -19,7 +19,7 @@ import { Row, Button } from './ui.jsx'
 // The server's floor (api/password.js MIN_LENGTH), checked here first so the common mistake is
 // answered without a round trip. The server still decides.
 export const MIN_PASSWORD = 10
-export const passwordOn = config => !!config?.password_login
+export const passwordOn = config => config?.password_login === true
 // An address the way the server stores and compares it (nameKey in api/password.js): NFKC,
 // trimmed, lower-cased.
 export const foldEmail = s => String(s || '').normalize('NFKC').trim().toLowerCase()
@@ -54,6 +54,7 @@ export function passwordError(e) {
     case 'too-long': return t('That password is too long.')
     case 'too-common': return t('That password is too easy to guess. Try a longer one, or a few random words strung together.')
     case 'name-taken': return t('Another profile already signs in with this name.')
+    case 'email-required': return t('Enter your name or e-mail.')
     case 'email-invalid': return t('That is not an e-mail address.')
     case 'email-taken': return t('Another profile already uses this e-mail address.')
     case 'invite': return t('That invite code is not valid.')
@@ -85,9 +86,9 @@ const codeStyle = { letterSpacing: '.14em', fontWeight: 600, textAlign: 'center'
 /* Sign in with name (or the profile's sign-in e-mail) and password, or — one tap away — redeem a reset code from the admin, which
    sets a new password and signs in. `onPasskey`, when given, offers the passkey instead. The
    inputs carry the autocomplete names password managers look for, inside a real form. */
-export function PasswordSignInSheet({ close, onPasskey }) {
+export function PasswordSignInSheet({ close }) {
   const [mode, setMode] = useState('signin')   // 'signin' | 'reset'
-  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [code, setCode] = useState('')
   const [next, setNext] = useState('')
@@ -100,8 +101,9 @@ export function PasswordSignInSheet({ close, onPasskey }) {
   const submit = async ev => {
     ev.preventDefault()
     if (busy) return
-    const n = name.trim()
-    const bad = !n ? t('Enter your name or e-mail.')
+    const address = email.trim()
+    const bad = !address ? t('Enter your name or e-mail.')
+      : !looksLikeEmail(address) ? t('That is not an e-mail address.')
       : !reset && !pw ? t('Enter your password.')
       : reset && !code.trim() ? t('Enter the reset code.')
       : reset && length(next) < MIN_PASSWORD ? t('Use at least {0} characters.', MIN_PASSWORD)
@@ -110,20 +112,16 @@ export function PasswordSignInSheet({ close, onPasskey }) {
       : null
     if (bad) { setErr(bad); return }
     setBusy(true); setErr(null)
-    try { await signedIn(reset ? await passwordResetRedeem(n, code.trim(), next) : await passwordLogin(n, pw), close) }
+    try { await signedIn(reset ? await passwordResetRedeem(address, code.trim(), next) : await passwordLogin(address, pw), close) }
     catch (e) { setErr(passwordError(e)) }
     finally { setBusy(false) }
   }
   return <>
     <h3>{reset ? t('Reset your password') : t('Sign in with password')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{reset
-      ? t('Enter the code your admin gave you and choose a new password. It signs you out everywhere else.')
-      : t('Use your profile name (or the e-mail you added to it) and your password.')}</div>
+    {reset && <div className="muted small" style={{ marginBottom: 14 }}>{t('Enter the code your admin gave you and choose a new password. It signs you out everywhere else.')}</div>}
     <form onSubmit={submit} noValidate>
-      {/* One field for both: the server looks an entry with an "@" up as an e-mail first. Not
-          type="email", which would refuse a plain name. */}
-      <input ref={nameRef} className="input" name="username" autoComplete="username" placeholder={t('Name or e-mail')} maxLength={254}
-        value={name} onChange={e => setName(e.target.value)} {...field} />
+      <input ref={nameRef} className="input" type="email" name="email" autoComplete="username" placeholder={t('E-mail address')} maxLength={254}
+        value={email} onChange={e => setEmail(e.target.value)} {...field} />
       <div style={{ height: 10 }} />
       {reset ? <>
         <input className="input" name="reset-code" autoComplete="one-time-code" placeholder={t('Reset code')} maxLength={20}
@@ -144,13 +142,9 @@ export function PasswordSignInSheet({ close, onPasskey }) {
     <div style={{ height: 8 }} />
     <Button type="button" variant="ghost" className="dim" onClick={() => { setErr(null); setMode(reset ? 'signin' : 'reset') }}>
       {reset ? t('Sign in with password') : t('Have a reset code from your admin?')}</Button>
-    {onPasskey && !reset && webauthnOK() && <>
-      <div style={{ height: 8 }} />
-      <Button type="button" icon="fingerprint" onClick={() => { close(); onPasskey() }}>{t('Sign in with passkey')}</Button>
-    </>}
   </>
 }
-export const openPasswordSignIn = onPasskey => ui().openSheet(close => <PasswordSignInSheet close={close} onPasskey={onPasskey} />)
+export const openPasswordSignIn = () => ui().openSheet(close => <PasswordSignInSheet close={close} />)
 
 /* The password half of creating a profile. Name and invite code are the caller's state, so
    switching between passkey and password on the sign-up sheet keeps what was typed. */
@@ -166,8 +160,9 @@ export function PasswordRegisterForm({ close, inviteOnly, name, setName, code, s
     const n = name.trim()
     const mail = email.trim()
     const bad = !n ? t('Enter a name')
-      : mail && !looksLikeEmail(mail) ? t('That is not an e-mail address.')
       : inviteOnly && !code.trim() ? t('An invite code is required')
+      : !mail ? t('Enter your name or e-mail.')
+      : !looksLikeEmail(mail) ? t('That is not an e-mail address.')
       : length(pw) < MIN_PASSWORD ? t('Use at least {0} characters.', MIN_PASSWORD)
       : pw !== again ? t('The two passwords are not the same.')
       : null
@@ -186,9 +181,9 @@ export function PasswordRegisterForm({ close, inviteOnly, name, setName, code, s
     <input className="input" name="username" autoComplete="username" placeholder={t('Your name')} maxLength={40}
       value={name} onChange={e => setName(e.target.value)} {...field} />
     <div style={{ height: 10 }} />
-    <input className="input" type="email" name="email" autoComplete="email" inputMode="email" placeholder={t('E-mail (optional)')} maxLength={254}
+    <input className="input" type="email" name="email" autoComplete="email" inputMode="email" placeholder={t('E-mail address')} maxLength={254} required
       value={email} onChange={e => setEmail(e.target.value)} {...field} />
-    <div className="dim small" style={{ marginTop: 6 }}>{t('Lets you sign in with it instead of your name. Nothing is ever sent to it.')}</div>
+    <div className="dim small" style={{ marginTop: 6 }}>{t('Type it at “Sign in with password” instead of your profile name. We never send anything to it; a forgotten password is still reset by your admin.')}</div>
     {inviteOnly && <>
       <div style={{ height: 10 }} />
       <input className="input" placeholder={t('Invite code')} maxLength={40} value={code}
@@ -319,8 +314,8 @@ export function PasswordRow({ version = 0 }) {
   if (!st.set && (!webauthnOK() || !st.passkeys)) return null
   const blocked = !st.set && st.nameTaken
   const subtitle = blocked ? t('Another profile already signs in with this name.')
-    : st.set ? t('Set · sign in as “{0}”', st.name)
-    : t('Not set. Handy for signing in where passkeys don’t work.')
+    : st.set && st.email ? t('Sign in with “{0}” instead of your name', st.email)
+    : t('Not set. Lets you sign in with an e-mail instead of your name.')
   return <>
     <Row icon="key" iconTint="var(--orange)" title={t('Password')} subtitle={subtitle} accessory={blocked ? 'none' : 'chevron'}
       onClick={blocked ? undefined : () => ui().openSheet(close => <PasswordSheet status={st} close={close} done={load} />)} />
@@ -355,9 +350,6 @@ export function PasswordSheet({ status, close, done }) {
   const remove = () => ui().openSheet(c => <RemovePasswordSheet status={status} close={c} done={() => { close(); done() }} />)
   return <>
     <h3>{status.set ? t('Change password') : t('Set a password')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>
-      {t('Sign in as “{0}” with it on devices where passkeys do not work. Saving signs you out everywhere else, and paired phones have to be paired again.', status.name)}
-    </div>
     <form onSubmit={ev => { ev.preventDefault(); save(!status.set) }} noValidate>
       {/* Tells a password manager which account the new password belongs to. */}
       <input type="text" name="username" autoComplete="username" value={status.name} readOnly hidden />
@@ -458,7 +450,7 @@ export function EmailSheet({ status, close, done }) {
         <div style={{ height: 12 }} />
         <Button type="submit" variant="primary">{t('Continue')}</Button>
       </form>
-      {status.email && <>
+      {status.email && !status.set && <>
         <div style={{ height: 8 }} />
         <button type="button" className="btn danger" onClick={remove}>{t('Remove e-mail')}</button>
       </>}

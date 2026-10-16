@@ -240,13 +240,12 @@ test('setting, changing and removing the address needs the owner’s proof, neve
   r = await setEmail(h, ana, { email: 'a@' + 'b'.repeat(260) + '.com', current: GOOD }, '198.51.100.126');
   assert.equal(r.body.code, 'email-invalid');
 
-  // Removing: the session alone is refused, by DELETE and by an empty address alike.
-  assert.equal((await h.req('DELETE', '/api/account/email', { body: {}, cookie: ana, ip: '198.51.100.127' })).status, 403);
-  assert.equal((await setEmail(h, ana, { email: '' }, '198.51.100.128')).status, 403);
+  // Removing the e-mail from a password account is refused so it cannot lose its only sign-in identifier.
+  r = await h.req('DELETE', '/api/account/email', { body: { current: GOOD }, cookie: ana, ip: '198.51.100.127' });
+  assert.equal(r.status, 409); assert.equal(r.body.code, 'email-required');
+  r = await setEmail(h, ana, { email: '' }, '198.51.100.128');
+  assert.equal(r.status, 409); assert.equal(r.body.code, 'email-required');
   assert.equal(h.db().users.find(u => u.id === 'u1').email, 'ana2@example.com');
-  r = await h.req('DELETE', '/api/account/email', { body: { current: GOOD }, cookie: ana, ip: '198.51.100.129' });
-  assert.deepEqual(r.body, { ok: true, email: null });
-  assert.equal('email' in h.db().users.find(u => u.id === 'u1'), false);
 
   // A profile with no password confirms with one of its passkeys; without one it is told to.
   r = await setEmail(h, bea, { email: 'bea@example.com' }, '198.51.100.130');
@@ -261,7 +260,6 @@ test('setting, changing and removing the address needs the owner’s proof, neve
   assert.deepEqual(evs.filter(e => e.ok).map(e => [e.ev, e.uid, e.msg]), [
     ['auth.email.set', 'u1', 'password · a…@e…'],
     ['auth.email.change', 'u1', 'password · a…@e…'],
-    ['auth.email.remove', 'u1', 'password'],
     ['auth.email.set', 'u2', 'passkey · b…@e…']
   ]);
   assert.equal(leaks(h, 'example.com'), false);

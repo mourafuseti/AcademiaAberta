@@ -2,29 +2,19 @@ import { useEffect, useState } from 'react'
 import { useUI } from '../store/useUI.js'
 import { useStore } from '../store/useStore.js'
 import { api } from '../lib/api.js'
+import { useLang } from '../lib/i18n.js'
+import { adminText as at } from '../lib/admin-copy.js'
 import Icon from '../components/Icon.jsx'
 import { Button, Switch, TextArea, TextField } from '../components/ui.jsx'
 import { confirmSheet } from '../sheets.jsx'
 
-/* The operator's side of the Coach, laid out as a guided setup: one master switch, numbered
-   steps that each say what they are for, and everything an owner rarely needs folded away
-   under "Advanced" and "Activity". Like the rest of the admin dashboard this is deliberately
-   English-only — it isn't part of the translated end-user surface.
-
-   What it never shows: anybody's intake answers, payloads or proposals. An admin can enable
-   the feature and see that jobs ran; they cannot read what their users asked it.
-
-   This is the ONLY place the Coach can be switched off for everyone. Users can decline the
-   consent screen for themselves, but they cannot disable the feature — that is an operator
-   decision, so it lives with the operator. */
-
 const rel = ts => {
-  if (!ts) return 'never'
+  if (!ts) return at('never')
   const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000)
-  if (s < 60) return 'just now'
-  if (s < 3600) return Math.floor(s / 60) + ' min ago'
-  if (s < 86400) return Math.floor(s / 3600) + ' h ago'
-  return Math.floor(s / 86400) + ' d ago'
+  if (s < 60) return at('just now')
+  if (s < 3600) return at('{0} min ago', Math.floor(s / 60))
+  if (s < 86400) return at('{0} h ago', Math.floor(s / 3600))
+  return at('{0} d ago', Math.floor(s / 86400))
 }
 
 // Extra static headers for the endpoint, one `Name: value` per line — e.g. a gateway's
@@ -39,10 +29,10 @@ export function parseHeadersText(text) {
   const out = {}
   for (const line of lines) {
     const i = line.indexOf(':')
-    if (i < 1) return { error: `not a Name: value line: ${line.slice(0, 40)}` }
+    if (i < 1) return { error: `${at('not a Name: value line')}: ${line.slice(0, 40)}` }
     const name = line.slice(0, i).trim()
     const value = line.slice(i + 1).trim()
-    if (!name || !value) return { error: `not a Name: value line: ${line.slice(0, 40)}` }
+    if (!name || !value) return { error: `${at('not a Name: value line')}: ${line.slice(0, 40)}` }
     out[name] = value
   }
   return { headers: out }
@@ -54,6 +44,7 @@ const RUNTIME_IDS = ['claude', 'codex']
 const TESTING_IDS = ['fixture']
 
 export default function AdminCoach() {
+  useLang()
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   const [d, setD] = useState(null)
@@ -69,7 +60,7 @@ export default function AdminCoach() {
   // that once per boot, and the Plan tab's Coach card hangs off it: without the re-read, an admin
   // who has just switched the Coach on and connected it finds no Coach anywhere until a reload,
   // which reads as a setup that failed (Discord #install-help, 2026-09-19).
-  const load = () => api('/api/admin/coach').then(r => { setD(r); setModels(r.knownModels || null); useStore.getState().refreshConfig() }).catch(e => toast(e.message || 'Failed to load'))
+  const load = () => api('/api/admin/coach').then(r => { setD(r); setModels(r.knownModels || null); useStore.getState().refreshConfig() }).catch(e => toast(e.message || at('Failed to load')))
   useEffect(() => { load() }, [])
 
   const patch = async body => {
@@ -93,7 +84,7 @@ export default function AdminCoach() {
       // longer than api()'s default for a request; a slow local model must still get its answer.
       const r = await api('/api/admin/coach/test', { method: 'POST', body: '{}', timeout: 150000 })
       setTestResult(r)
-      toast(r.ok ? 'Coach test passed ✅' : 'Test failed')
+      toast(r.ok ? at('Coach test passed ✅') : at('Test failed'))
       await load()
     } catch (e) { setTestResult({ ok: false, error: e.message }); toast(e.message) }
     setBusy(false)
@@ -108,16 +99,16 @@ export default function AdminCoach() {
   }
   const disconnect = async () => {
     setBusy(true)
-    try { await api('/api/admin/coach/disconnect', { method: 'POST', body: JSON.stringify({ provider: d.provider }) }); toast('Credential removed'); await load() }
+    try { await api('/api/admin/coach/disconnect', { method: 'POST', body: JSON.stringify({ provider: d.provider }) }); toast(at('Credential removed')); await load() }
     catch (e) { toast(e.message) }
     setBusy(false)
   }
 
-  if (!d) return <div className="card"><div className="muted small">Loading Coach status…</div></div>
+  if (!d) return <div className="card"><div className="muted small">{at('Loading Coach status…')}</div></div>
 
   if (d.disabledByEnv) return <div className="card">
-    <h2 style={{ margin: '0 0 6px' }}>AI Coach</h2>
-    <div className="adm-lead">Force-disabled by <code>COACH_DISABLED</code> in the server's environment. Remove that variable and restart to configure the Coach here.</div>
+    <h2 style={{ margin: '0 0 6px' }}>{at('AI Coach')}</h2>
+    <div className="adm-lead">{at('Force-disabled by')} <code>COACH_DISABLED</code> {at('in the server\'s environment. Remove that variable and restart to configure the Coach here.')}</div>
   </div>
 
   const meta = d.providers.find(p => p.id === d.provider) || {}
@@ -127,18 +118,18 @@ export default function AdminCoach() {
   const hasEndpoint = !needsEndpoint || !!d.baseUrl
   const live = d.enabled && d.runtime.ok && authed && hasEndpoint
 
-  const status = !d.enabled ? 'Off. Users won’t see the Coach anywhere in the app.'
+  const status = !d.enabled ? at('Off. Users won’t see the Coach anywhere in the app.')
     : live ? <>On · {meta.label}{d.model ? ' · ' + d.model : ''}</>
-      : !hasEndpoint ? 'On, but no endpoint yet. Finish step 2.'
-        : !authed ? 'On, but no credential yet. Finish the Credential step.'
-          : !d.runtime.ok ? 'On, but the provider can’t be reached. See the Test step.'
+      : !hasEndpoint ? at('On, but no endpoint yet. Finish step 2.')
+        : !authed ? at('On, but no credential yet. Finish the Credential step.')
+          : !d.runtime.ok ? at('On, but the provider can’t be reached. See the Test step.')
             : 'On'
 
   // Chips, grouped.
   const groups = [
-    { title: 'Paste an API key', hint: 'Plain HTTPS to the provider. Works on the default api image, nothing extra to install.', items: d.providers.filter(p => p.http) },
-    { title: 'Runs a local AI runtime', hint: 'Needs the bigger api image built with --target coach.', items: d.providers.filter(p => RUNTIME_IDS.includes(p.id)) },
-    { title: 'Testing', hint: 'A built-in fake that answers instantly, so the whole loop can be tried without an account.', items: d.providers.filter(p => TESTING_IDS.includes(p.id)) }
+    { title: at('Paste an API key'), hint: at('Plain HTTPS to the provider. Works on the default api image, nothing extra to install.'), items: d.providers.filter(p => p.http) },
+    { title: at('Runs a local AI runtime'), hint: at('Needs the bigger api image built with --target coach.'), items: d.providers.filter(p => RUNTIME_IDS.includes(p.id)) },
+    { title: at('Testing'), hint: at('A built-in fake that answers instantly, so the whole loop can be tried without an account.'), items: d.providers.filter(p => TESTING_IDS.includes(p.id)) }
   ]
 
   const hasCredentialStep = !!(meta.setupToken || meta.apiKey)
@@ -165,30 +156,30 @@ export default function AdminCoach() {
   if (!d.enabled) return <div className="card">
     <div className="adm-hero">
       <div className="adm-hero-av"><Icon name="sparkles" /></div>
-      <h2>AI Coach</h2>
-      <p>An optional coach that designs training plans and reviews what people actually log. Off right now, so nobody sees it anywhere in the app.</p>
+      <h2>{at('AI Coach')}</h2>
+      <p>{at('An optional coach that designs training plans and reviews what people actually log. Off right now, so nobody sees it anywhere in the app.')}</p>
       <div className="adm-hero-feats">
-        <div><Icon name="key" /><span><b>Bring any AI.</b> An API key from Anthropic, OpenAI or Gemini, or a free local model via Ollama.</span></div>
-        <div><Icon name="shield" /><span><b>Private by design.</b> A strict allowlist decides what leaves; every change needs the user's yes and can be undone.</span></div>
-        <div><Icon name="person" /><span><b>Each user decides.</b> Turning it on only makes the Coach available; every person consents for themselves.</span></div>
+        <div><Icon name="key" /><span><b>{at('Bring any AI.')}</b>{at(' An API key from Anthropic, OpenAI or Gemini, or a free local model via Ollama.')}</span></div>
+        <div><Icon name="shield" /><span><b>{at('Private by design.')}</b>{at(' A strict allowlist decides what leaves; every change needs the user\'s yes and can be undone.')}</span></div>
+        <div><Icon name="person" /><span><b>{at('Each user decides.')}</b>{at(' Turning it on only makes the Coach available; every person consents for themselves.')}</span></div>
       </div>
-      <Button variant="primary" icon="sparkles" disabled={busy} onClick={() => patch({ enabled: true })}>Set up the Coach</Button>
+      <Button variant="primary" icon="sparkles" disabled={busy} onClick={() => patch({ enabled: true })}>{at('Set up the Coach')}</Button>
     </div>
   </div>
 
   return <div className="card" style={{ borderColor: live ? 'var(--acc)' : undefined }}>
     <div className="row between" style={{ marginBottom: 2 }}>
-      <h2 style={{ margin: 0 }}>AI Coach</h2>
+      <h2 style={{ margin: 0 }}>{at('AI Coach')}</h2>
       <Switch checked={!!d.enabled} disabled={busy} onChange={v => patch({ enabled: v })} />
     </div>
     <div className="adm-status">
-      <span className={'adm-pill ' + (live ? 'ok' : 'warn')}>{live ? 'ready' : 'not ready'}</span>
+      <span className={'adm-pill ' + (live ? 'ok' : 'warn')}>{live ? at('ready') : at('not ready')}</span>
       <span>{status}</span>
     </div>
     {!live && <div className="adm-progress" aria-hidden="true"><i style={{ width: Math.round(doneCount / flags.length * 100) + '%' }} /></div>}
     <div className="adm-lead">
-      {live ? 'Users find the Coach under Plan → Coach. This switch is the only place it can be turned off for everyone.'
-        : `${doneCount} of ${flags.length} steps done. Finish the open step and the next one unfolds.`}
+      {live ? at('Users find the Coach under Plan → Coach. This switch is the only place it can be turned off for everyone.')
+        : at('{0} of {1} steps done. Finish the open step and the next one unfolds.', doneCount, flags.length)}
     </div>
 
     {d.enabled && <>

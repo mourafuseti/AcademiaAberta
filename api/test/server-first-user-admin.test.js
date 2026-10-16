@@ -115,7 +115,7 @@ const user = (id, name, extra = {}) => ({ id, name, created: new Date().toISOStr
 const withPassword = (id, name) => user(id, name, { pw: { h: pwHash, set: new Date().toISOString() } });
 
 
-const registerPassword = (h, name, ip) => h.req('POST', '/api/register/password', { body: { name, password: GOOD }, ip });
+const registerPassword = (h, name, ip) => h.req('POST', '/api/register/password', { body: { name, email: `${name.toLowerCase()}@example.com`, password: GOOD }, ip });
 async function registerPasskey(h, name, ip) {
   const opt = await h.req('POST', '/api/register/options', { body: { name }, ip });
   assert.equal(opt.status, 200);

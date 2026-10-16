@@ -66,10 +66,8 @@ function claimFirstAdmin(req, user) {
 // out of is still the wrong front door (#42). Default ON, so existing instances are unchanged;
 // the polarity is inverted from INVITE_ONLY because the safe default here is the permissive one.
 const ALLOW_GUEST = !/^(0|false|no|off)$/i.test(process.env.ALLOW_GUEST || '');
-// Name-and-password sign-in next to passkeys (#118). Off by default: it adds a second way into
-// every account that opts in, so an instance has to ask for it. While it is off every password
-// route answers 404 and the app shows none of it; hashes already stored stay where they are.
-const PASSWORD_LOGIN = /^(1|true|yes|on)$/i.test(process.env.PASSWORD_LOGIN || '');
+// E-mail-and-password sign-in is available by default. Set PASSWORD_LOGIN=0 to disable it.
+const PASSWORD_LOGIN = process.env.PASSWORD_LOGIN === undefined || /^(1|true|yes|on)$/i.test(process.env.PASSWORD_LOGIN);
 // The language the sign-in screen, and every profile that never picked one, starts in (#303) —
 // for an instance whose people share a language. Only a tag's shape is checked here; the app
 // matches it against the languages it has and ignores one it does not know. Unset, it is left
@@ -1016,11 +1014,9 @@ function auditFail(req, ev, f) {
 }
 
 /* ---------- password sign-in (#118) ---------- */
-// Optional, per instance (PASSWORD_LOGIN) and per profile: nobody has a password until they set
-// one. Passkeys stay the default and the recommended way in. What a password needs that a
-// passkey does not — hashing, a policy, the throttle above, a reset an admin can hand out — lives
-// in password.js and rate-limit.js; the routes are here because they share the session, invite
-// and audit machinery of the passkey routes.
+// Available by default when PASSWORD_LOGIN is on. Passwords are hashed, policy-checked and
+// throttled; recovery uses a one-time code from an admin. These routes share the session, invite
+// and audit machinery of the passkey routes, which remain for existing accounts and pairing.
 //
 // The name someone signs in with is their profile name, compared the way nameKey() folds it.
 // Profile names were never unique, so the rule is narrower than that: no two profiles *with a
@@ -1077,6 +1073,7 @@ const nameTaken = (name, exceptId) => {
 const emailHolder = e => db.users.find(u => hasPassword(u) && u.email === e) || null;
 const emailTaken = (e, exceptId) => db.users.some(u => u.id !== exceptId && (u.email === e || (holdsName(u) && nameKey(u.name) === e)));
 const EMAIL_ERRORS = {
+  required: { error: 'an e-mail address is required for sign-in', code: 'email-required' },
   invalid: { error: 'that is not an e-mail address', code: 'email-invalid' },
   taken: { error: 'another profile already uses this e-mail address', code: 'email-taken' }
 };
@@ -1226,6 +1223,7 @@ if (PASSWORD_LOGIN) warmUp();
 // setting one; a profile without an address gets 200 with none asked.
 async function removeEmail(req, res, user, body) {
   if (!user.email) return json(res, 200, { ok: true, email: null });
+  if (PASSWORD_LOGIN && hasPassword(user)) return json(res, 409, EMAIL_ERRORS.required);
   const proof = await proveOwner(req, res, user, body, 'email-remove');
   if (!proof) return;
   if (readSession(req) !== user) return json(res, 401, { error: 'not signed in' });
@@ -1240,7 +1238,7 @@ const passwordRoutes = {
     const body = await readBody(req);
     const target = loginTarget(body);
     const pw = typeof body.password === 'string' ? body.password : '';
-    if (!target || !pw) return json(res, 400, { error: 'name and password required', code: 'missing' });
+    if (!target || !pw) return json(res, 400, { error: 'e-mail and password required', code: 'missing' });
     const check = passwordAttempt(req, res, target.key);
     if (!check) return;
     const { user } = target;
@@ -1278,8 +1276,7 @@ const passwordRoutes = {
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
-  // For browsers that cannot make a passkey at all: plain http on a LAN address, some Firefox
-  // setups. Same invite rules as /api/register/*, checked again and burned after the hash.
+  // Password signup follows the same invite rules as /api/register/*, checked again and burned after the hash.
   'POST /api/register/password': async (req, res) => {
     const body = await readBody(req);
     const name = text(body.name).trim().slice(0, 40);
@@ -1296,11 +1293,8 @@ const passwordRoutes = {
     if (problem) return policyError(res, problem);
     const taken = () => json(res, 409, { error: 'another profile already signs in with this name', code: 'name-taken' });
     if (nameTaken(name)) return taken();
-    // An e-mail is optional here. One already in use counts against the address, the way it
-    // does in Settings: this route needs no session, so it is the cheaper place to ask. Whether
-    // it is in use is only answered after the hash and the invite check that follows it, so on
-    // an invite-only instance nobody without a valid code learns anything about addresses.
     const hasEmail = typeof body.email === 'string' && body.email.trim() !== '';
+    if (!hasEmail) return json(res, 400, EMAIL_ERRORS.required);
     const email = hasEmail ? normalizeEmail(body.email) : null;
     if (hasEmail && !email) return json(res, 400, EMAIL_ERRORS.invalid);
     const emailRefused = () => {
@@ -1473,7 +1467,7 @@ const passwordRoutes = {
     // The name or the e-mail, in the same fields sign-in takes them (loginTarget).
     const k = nameKey(text(body.identifier ?? body.name ?? body.email).slice(0, 300));
     const code = text(body.code).slice(0, 64);
-    if (!k || !code) return json(res, 400, { error: 'name and code required', code: 'missing' });
+    if (!k || !code) return json(res, 400, { error: 'e-mail and code required', code: 'missing' });
     // Wrong codes count against the address only. A per-name pause would add nothing against a
     // 60-bit code that lives a day, and would let anyone who knows the name keep the real code
     // refused for that whole day — after the reset has already removed the old password.
@@ -1934,8 +1928,7 @@ const routes = {
     // that has no Coach. The key's absence is that answer.
     json(res, 200, {
       invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST,
-      // Only when on, so an instance without passwords answers exactly as it did before (#118).
-      ...(PASSWORD_LOGIN ? { password_login: true } : {}),
+      password_login: PASSWORD_LOGIN,
       // Public: the sign-in screen is the first thing that reads it.
       ...(DEFAULT_LANG ? { default_lang: DEFAULT_LANG } : {}),
       // Public like the two flags above: the caps are not a secret, and the absence of the

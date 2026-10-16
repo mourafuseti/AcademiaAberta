@@ -1,3 +1,4 @@
+
 # AcademiaAberta
 
 Aplicativo de acompanhamento de treinos para planejar rotinas, registrar exercícios e acompanhar o progresso. O AcademiaAberta é uma adaptação comunitária do [openGym](https://github.com/DuarteSantos8/openGym), com foco em uma experiência em português do Brasil.
