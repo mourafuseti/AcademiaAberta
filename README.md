@@ -14,7 +14,7 @@ Aplicativo de acompanhamento de treinos para planejar rotinas, registrar exercí
 ## Requisitos
 
 - Node.js 22.12 ou superior e npm para desenvolvimento local.
-- Docker Desktop e Docker Compose para executar a instalacao conteinerizada.
+- Docker Desktop e Docker Compose para executar a instalação conteinerizada.
 
 ## Desenvolvimento local
 
@@ -39,7 +39,7 @@ npm run dev
 
 Abra o endereço mostrado pelo Vite, normalmente `http://localhost:5173`. A API local usa a porta `3000`. Mantenha os dois processos em execução enquanto usa o app.
 
-Passkeys exigem HTTPS fora de `localhost`. Ao acessar pelo celular usando o IP da rede local, a interface pode abrir em HTTP, mas o cadastro por passkey pode nao funcionar sem configurar HTTPS.
+Passkeys exigem HTTPS fora de `localhost`. Ao acessar pelo celular usando o IP da rede local, a interface pode abrir em HTTP, mas o cadastro por passkey pode não funcionar sem configurar HTTPS.
 
 ## Executar com Docker
 
@@ -52,7 +52,7 @@ docker compose up --build -d
 
 Acesse `http://localhost:8080`. Para parar os serviços, execute `docker compose down`. Os dados persistentes ficam em `data/`; mantenha uma cópia de segurança dessa pasta.
 
-Para disponibilizar o app pela internet, configure um dominio com HTTPS e ajuste `RP_ID` e `ORIGIN` no `.env`. Consulte o [guia de hospedagem](docs/SELF_HOSTING.md).
+Para disponibilizar o app pela internet, configure um domínio com HTTPS e ajuste `RP_ID` e `ORIGIN` no `.env`. Consulte o [guia de hospedagem](docs/SELF_HOSTING.md).
 
 ## Testes e build
 
@@ -71,7 +71,7 @@ cd api
 npm test
 ```
 
-## Licencas e creditos
+## Licenças e créditos
 
 O código do projeto é distribuído sob a [GNU AGPL v3](LICENSE). As imagens e animações de exercícios possuem uma licença separada e restrições de uso; consulte o [aviso de terceiros](https://github.com/mourafuseti/AcademiaAberta/blob/main/NOTICE.md) antes de reutilizar qualquer mídia. O crédito à Gym visual deve permanecer junto ao app.
 
